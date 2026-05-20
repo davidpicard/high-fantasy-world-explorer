@@ -4,7 +4,7 @@ High Fantasy Word Explorer
 
 Explore AI-generated scenes and guess the word each one depicts.
 Press Tab to open the input field, type your answer, press Enter.
-Find all 10 words to win!
+Find 10 words to win!
 
 Usage:
     python game.py
@@ -12,13 +12,13 @@ Usage:
 
 Controls:
     Z / S        – move forward / backward
-    Left / Right – yaw (turn left / right)
+    Left / Right – yaw (full 360°)
     Up / Down    – pitch (look up / down)
     Tab          – open / close word-input field
     Enter        – submit guess
     Backspace    – delete last character
     R            – reset camera to origin
-    ESC / Q      – close input field / quit
+    ESC / Q      – close overlay / quit
 """
 
 import argparse
@@ -49,141 +49,241 @@ from models.models import OVIEModel  # noqa: E402
 from utils.pose_enc import extri_intri_to_pose_encoding  # noqa: E402
 from miro import MiroPipeline  # noqa: E402
 
-# ── Word list (30 entries, 10 chosen per game) ───────────────────────────────
+# ── Word list ─────────────────────────────────────────────────────────────────
+# Each entry: (word, north_prompt, background_prompt)
+# north_prompt  – scene containing the concept to guess (shown facing north)
+# background_prompt – coherent skybox for east / south / west views (no spoiler)
 WORDS_AND_PROMPTS = [
     # scenes ──────────────────────────────────────────────────────────────────
     ("CASTLE",
      "A grand medieval stone castle rising from a misty sea cliff at golden hour, tall towers "
      "with glowing windows, a drawbridge over a dark moat, ravens circling, high fantasy, "
-     "photorealistic"),
+     "photorealistic",
+     "Rocky coastal cliffs and mist-shrouded sea at golden hour, crashing waves on dark rocks, "
+     "no buildings, high fantasy, photorealistic"),
+
     ("FOREST",
      "An ancient enchanted forest with enormous silver-barked trees, bioluminescent mushrooms "
      "and glowing flowers on the mossy floor, magical golden light rays filtering through the "
-     "dense canopy, high fantasy, photorealistic"),
+     "dense canopy, high fantasy, photorealistic",
+     "Ancient silver-barked trees and glowing mossy undergrowth in an enchanted forest, magical "
+     "light filtering through dense canopy, high fantasy, photorealistic"),
+
     ("DUNGEON",
      "A dark underground dungeon with rough stone walls and iron-barred cells, flickering "
      "torchlight casting long shadows on bones and rusted weapons on the damp floor, heavy "
-     "chains on the walls, gothic high fantasy, photorealistic"),
+     "chains on the walls, gothic high fantasy, photorealistic",
+     "Dark stone underground corridors with iron-barred archways, flickering wall torches and "
+     "damp rough-hewn walls, gothic high fantasy, photorealistic"),
+
     ("TAVERN",
      "Interior of a warm medieval fantasy tavern, low wooden beams, a large stone fireplace "
      "roaring with fire, cloaked adventurers at oak tables with tankards of ale, warm "
-     "candlelight, high fantasy, photorealistic"),
+     "candlelight, high fantasy, photorealistic",
+     "Warm candlelit medieval interior with low wooden beams, stone walls hung with lanterns, "
+     "empty wooden tables and benches, high fantasy, photorealistic"),
+
     ("PORTAL",
      "A swirling circular arcane portal of violet and gold energy suspended between ancient "
      "moss-covered stone pillars in a ruin, glimpses of another realm through the gateway, "
-     "glowing runes carved into the stone, high fantasy, photorealistic"),
+     "glowing runes carved into the stone, high fantasy, photorealistic",
+     "Ancient moss-covered stone ruins and pillars in a misty forest, crumbling archways and "
+     "carved stones, no portal, high fantasy, photorealistic"),
+
     ("THRONE",
      "An imposing dark throne room with a massive obsidian throne on a raised dais, towering "
      "pillars lined with burning braziers, tattered battle banners hanging from vaulted "
-     "ceilings, dramatic candlelight, high fantasy, photorealistic"),
+     "ceilings, dramatic candlelight, high fantasy, photorealistic",
+     "Dark stone hall with towering pillars, burning braziers and vaulted stone ceilings, "
+     "tattered banners, no throne, high fantasy, photorealistic"),
+
     ("RUINS",
      "Ancient stone ruins of a fallen elven city overgrown with vines and glowing moss, "
      "crumbling archways and broken statues, mist drifting through, high fantasy, "
-     "photorealistic"),
+     "photorealistic",
+     "Dense misty ancient forest with crumbling stone archways and fallen carved columns "
+     "overgrown with vines and glowing moss, high fantasy, photorealistic"),
+
     ("CRYPT",
      "A vast underground crypt with rows of stone sarcophagi carved with warrior reliefs, "
      "flickering torch sconces on damp walls, cobwebs and scattered bones, high fantasy, "
-     "photorealistic"),
+     "photorealistic",
+     "Dark underground stone halls with carved arched ceilings, torch sconces, cobwebs and "
+     "damp stone walls, high fantasy, photorealistic"),
+
     ("SHRINE",
      "A moss-covered outdoor forest shrine with a stone idol surrounded by offerings of "
      "candles and flowers, shafts of magical dappled light, ancient mystical atmosphere, "
-     "high fantasy, photorealistic"),
+     "high fantasy, photorealistic",
+     "Magical mossy forest glade with dappled golden light through ancient trees, scattered "
+     "wildflowers and glowing mushrooms, high fantasy, photorealistic"),
+
     ("ALTAR",
      "A dark stone altar in an underground ritual chamber, carved with arcane symbols, "
      "surrounded by burning black candles, ominous light from above, high fantasy, "
-     "photorealistic"),
+     "photorealistic",
+     "Dark underground ritual chamber with rough stone walls, burning black candles and arcane "
+     "carvings, no altar, high fantasy, photorealistic"),
+
     ("FORGE",
      "Interior of a dwarven forge, a massive furnace blazing with orange fire, sparks flying, "
      "glowing hot iron on a huge anvil, weapons and tools hung on stone walls, high fantasy, "
-     "photorealistic"),
+     "photorealistic",
+     "Dwarven stone cavern with rough rock walls, glowing coals and metal tools on stone walls, "
+     "no forge or anvil, high fantasy, photorealistic"),
+
     # objects — close up ───────────────────────────────────────────────────────
     ("POTION",
      "Close up of a cluttered alchemist workshop with glowing coloured potions in glass vials "
      "and flasks, a bubbling cauldron emitting rainbow smoke, dried herbs, an open ancient "
-     "grimoire, candlelight, high fantasy, photorealistic"),
+     "grimoire, candlelight, high fantasy, photorealistic",
+     "Cluttered alchemist workshop shelves with glass bottles, dried herbs and dusty tomes, "
+     "candlelight, no glowing potions, high fantasy, photorealistic"),
+
     ("CROWN",
      "Close up of an ancient royal crown wrought from dark twisted gold, set with glowing "
      "rubies and sapphires, resting on red velvet, dramatic side lighting, high fantasy, "
-     "photorealistic"),
+     "photorealistic",
+     "Dark stone treasury interior with velvet pedestals and dim candlelight, stone walls with "
+     "carved reliefs, no crown, high fantasy, photorealistic"),
+
     ("GRIMOIRE",
      "Close up of an open ancient spellbook with yellowed pages covered in glowing arcane "
      "symbols and diagrams, a quill pen resting on the page, flickering candlelight, high "
-     "fantasy, photorealistic"),
+     "fantasy, photorealistic",
+     "Ancient magical library with wooden shelves of dusty tomes and scrolls, candlelight and "
+     "arcane instruments, no open book, high fantasy, photorealistic"),
+
     ("SWORD",
      "Close up of a legendary enchanted sword with a jewelled crossguard, glowing runes etched "
      "along the gleaming blade, embedded in a mossy stone, dramatic lighting, high fantasy, "
-     "photorealistic"),
+     "photorealistic",
+     "Ancient mossy stone ruins in a dramatic forest glade, dappled light and ferns, no sword, "
+     "high fantasy, photorealistic"),
+
     # persons and creatures — portrait ────────────────────────────────────────
     ("DRAGON",
      "Portrait of a colossal dragon with obsidian scales, glowing amber eyes, smoke curling "
      "from flared nostrils, massive curved horns, dramatic stormy sky behind it, high fantasy, "
-     "photorealistic"),
+     "photorealistic",
+     "Dark stormy sky with billowing storm clouds and lightning over rocky mountain peaks, "
+     "high fantasy, photorealistic"),
+
     ("WIZARD",
      "Portrait of an elderly wizard in deep blue robes covered with silver stars, casting a "
      "glowing spell, ancient books floating around him, magical energy crackling from his staff, "
-     "high fantasy, photorealistic"),
+     "high fantasy, photorealistic",
+     "Ancient magical study filled with floating books, arcane instruments and glowing orbs, "
+     "no figure, high fantasy, photorealistic"),
+
     ("GOBLIN",
      "Portrait of a sneaky green-skinned goblin with large pointed ears, crooked yellow teeth, "
      "wide glinting eyes, clutching a stolen jewel, torchlit cave background, high fantasy, "
-     "photorealistic"),
+     "photorealistic",
+     "Dark torchlit cave interior with rough stone walls and scattered treasures, no goblin, "
+     "high fantasy, photorealistic"),
+
     ("KNIGHT",
      "Portrait of a noble knight in gleaming silver full plate armour, ornate helmet under one "
-     "arm, determined expression, castle courtyard background, high fantasy, photorealistic"),
+     "arm, determined expression, castle courtyard background, high fantasy, photorealistic",
+     "Stone castle courtyard with flagstone floor, stone walls hung with banners, afternoon "
+     "light, no figure, high fantasy, photorealistic"),
+
     ("ELF",
      "Portrait of a wise elven warrior with pointed ears, silver hair, piercing blue eyes, "
      "wearing intricate golden leaf armour, ethereal forest background, high fantasy, "
-     "photorealistic"),
+     "photorealistic",
+     "Ethereal ancient forest with silver-barked trees and magical golden light, no figure, "
+     "high fantasy, photorealistic"),
+
     ("DWARF",
      "Portrait of a stout dwarf warrior with a long braided red beard adorned with golden "
      "rings, a battle axe over one shoulder, runic engraved armour, high fantasy, "
-     "photorealistic"),
+     "photorealistic",
+     "Vast underground dwarven hall with stone pillars and distant forge fires, no figure, "
+     "high fantasy, photorealistic"),
+
     ("WITCH",
      "Portrait of an old witch with sharp green eyes, long silver hair, a wide-brimmed hat "
      "decorated with crow feathers and dried herbs, a knowing smile, candlelit room, high "
-     "fantasy, photorealistic"),
+     "fantasy, photorealistic",
+     "Candlelit cottage interior with dried herbs hanging from rafters and shelves of jars, "
+     "no figure, high fantasy, photorealistic"),
+
     ("GOLEM",
      "Portrait of a massive stone golem with glowing orange eyes, carved arcane runes across "
-     "its rocky face, cracked granite skin, looming and ancient, high fantasy, photorealistic"),
+     "its rocky face, cracked granite skin, looming and ancient, high fantasy, photorealistic",
+     "Ancient stone chamber with massive carved walls and glowing arcane runes, no golem, "
+     "high fantasy, photorealistic"),
+
     ("VALKYRIE",
      "Portrait of a fierce valkyrie in silver winged armour, long golden hair streaming in the "
      "wind, a glowing spear raised high, dramatic storm clouds behind her, high fantasy, "
-     "photorealistic"),
+     "photorealistic",
+     "Dramatic storm clouds with lightning and rays of golden light over mountainous landscape, "
+     "high fantasy, photorealistic"),
+
     ("SORCERER",
      "Portrait of a gaunt dark sorcerer in flowing black and purple robes, glowing violet eyes, "
      "a skull-topped staff, tendrils of dark energy swirling from his hands, high fantasy, "
-     "photorealistic"),
+     "photorealistic",
+     "Dark stone tower interior with arcane symbols carved on walls, purple energy crackling "
+     "in the air, no figure, high fantasy, photorealistic"),
+
     ("TROLL",
      "Portrait of a massive cave troll with jagged uneven teeth, a flat wide nose, small yellow "
-     "eyes, warty grey-green skin, clutching a crude stone club, high fantasy, photorealistic"),
+     "eyes, warty grey-green skin, clutching a crude stone club, high fantasy, photorealistic",
+     "Dark rocky cave with jagged stone walls and dim greenish bioluminescent light, no troll, "
+     "high fantasy, photorealistic"),
+
     # creatures — close up ────────────────────────────────────────────────────
     ("HYDRA",
      "Close up of a fearsome hydra with three serpent heads rearing up from dark swamp water, "
-     "dripping scales, forked tongues, glowing red eyes, high fantasy, photorealistic"),
+     "dripping scales, forked tongues, glowing red eyes, high fantasy, photorealistic",
+     "Dark murky swamp with gnarled dead trees and fog drifting over still black water, "
+     "high fantasy, photorealistic"),
+
     ("PEGASUS",
      "Close up of a majestic white pegasus rearing up, enormous feathered wings spread wide, "
-     "golden light on its silver mane, dramatic storm clouds, high fantasy, photorealistic"),
+     "golden light on its silver mane, dramatic storm clouds, high fantasy, photorealistic",
+     "Dramatic storm clouds with shafts of golden light over mountainous landscape, "
+     "high fantasy, photorealistic"),
+
     ("PHOENIX",
      "Close up of a radiant phoenix rising from golden flames, crimson and gold feathers "
      "blazing, fierce amber eyes, trailing embers against a dark sky, high fantasy, "
-     "photorealistic"),
+     "photorealistic",
+     "Dark twilight sky with glowing embers and smoke clouds, volcanic rocky landscape below, "
+     "high fantasy, photorealistic"),
+
     ("UNICORN",
      "Close up of a graceful unicorn with a pure white coat, spiraling silver horn glowing "
      "with magic, flowing silver mane, surrounded by ethereal forest light, high fantasy, "
-     "photorealistic"),
+     "photorealistic",
+     "Magical misty forest with silver light filtering through ancient trees, wildflowers and "
+     "glowing moss, high fantasy, photorealistic"),
 ]
 
-WORDS_TO_WIN   = 10    # correct guesses needed to win (out of 30 available)
-INPUT_FIELD_LEN = 10   # fixed width of the underscore input display
+WORDS_TO_WIN    = 10
+INPUT_FIELD_LEN = 10
 
 # ── Constants ─────────────────────────────────────────────────────────────────
-WINDOW_SIZE    = 768            # postprocessed image size (square)
-DISPLAY_HEIGHT = 512            # visible viewport height (centre-cropped vertically)
-DITHER_SIZE    = 384            # intermediate size for dithering
-CAMERA_STEP    = 0.05           # world-units per key press
-CAMERA_TURN_ANGLE = np.radians(0.5)  # radians per rotation press
-MAX_YAW        = np.radians(5)  # maximum yaw from origin
-MAX_PITCH      = np.radians(5)  # maximum pitch from origin
-MAX_Z          = 0.5            # maximum forward/backward from origin
+WINDOW_SIZE    = 768
+DISPLAY_HEIGHT = 512
+DITHER_SIZE    = 384
+
+# Navigation step sizes (same as original fine-grained controls)
+CAMERA_STEP       = 0.05            # Z translation per key press
+CAMERA_TURN_ANGLE = np.radians(1) # yaw / pitch step (radians)
+MAX_PITCH         = np.radians(5)   # ±5° pitch limit
+MAX_Z             = 0.5             # ±0.5 Z limit
+# 4 MIRO references at 0°/90°/180°/270° (N/E/S/W).
+# OVIE chaining at CHAIN_STEP_DEG increments; transitions fade to black at the
+# midpoint between references so OVIE quality degradation is masked by darkness.
+NUM_REFS        = 4
+SECTOR_DEG      = 360.0 / NUM_REFS   # 90°
+CHAIN_STEP_DEG  = 2.0
+MAX_CHAIN_STEPS = 16    # 16 × 2° = 32° reliable range per reference
 
 MIRO_REWARDS = {"hpsv2_score": 0.75, "vqa_score": 0.5, "sciscore_score": 0.5}
 
@@ -211,7 +311,7 @@ def dither(img: Image.Image, r: int = 4, g: int = 4, b: int = 4) -> Image.Image:
     return Image.fromarray((out * 255).round().astype(np.uint8), mode="RGB")
 
 
-def postprocess(img: Image.Image, r: int = 4, g: int = 4, b: int = 4) -> Image.Image:
+def postprocess(img: Image.Image, r: int = 8, g: int = 8, b: int = 8) -> Image.Image:
     img = img.resize((DITHER_SIZE, DITHER_SIZE), Image.Resampling.BICUBIC)
     img = dither(img, r, g, b)
     img = img.resize((WINDOW_SIZE, WINDOW_SIZE), Image.Resampling.NEAREST)
@@ -231,7 +331,7 @@ def pil_to_surface(img: Image.Image) -> pygame.Surface:
     return pygame.image.fromstring(rgb.tobytes(), rgb.size, "RGB")
 
 
-# ── Camera helpers ────────────────────────────────────────────────────────────
+# ── Camera helpers ─────────────────────────────────────────────────────────────
 _NAV_KEYS = (pygame.K_LEFT, pygame.K_RIGHT, pygame.K_UP, pygame.K_DOWN,
              pygame.K_z, pygame.K_s)
 
@@ -262,8 +362,8 @@ def make_cam_token(cam_rot: np.ndarray, cam_trans: np.ndarray,
 # ── Main ──────────────────────────────────────────────────────────────────────
 def main() -> None:
     parser = argparse.ArgumentParser(description="High Fantasy Word Explorer")
-    parser.add_argument("--seed", type=int, default=3407)
-    parser.add_argument("--steps", type=int, default=40)
+    parser.add_argument("--seed",     type=int,   default=3407)
+    parser.add_argument("--steps",    type=int,   default=40)
     parser.add_argument("--guidance", type=float, default=7.0)
     args = parser.parse_args()
 
@@ -280,129 +380,236 @@ def main() -> None:
     ovie.eval()
     ovie_size: int = ovie.image_size
 
-    # Single generator; each call advances its state so every scene is different.
     random.seed(args.seed)
     generator = torch.Generator(device).manual_seed(args.seed)
 
     # ── Game state ─────────────────────────────────────────────────────────────
     scene_order = list(range(len(WORDS_AND_PROMPTS)))
     random.shuffle(scene_order)
-    current_idx   = 0          # index into scene_order
+    current_idx   = 0
     found_words: list[str] = []
-    lives     = 3
-    game_over = False
+    lives      = 3
+    game_over  = False
     text_mode  = False
     typed_text = ""
     show_help  = False
 
-    def scene_word()   -> str: return WORDS_AND_PROMPTS[scene_order[current_idx]][0]
-    def scene_prompt() -> str: return WORDS_AND_PROMPTS[scene_order[current_idx]][1]
+    def scene_word()        -> str: return WORDS_AND_PROMPTS[scene_order[current_idx]][0]
+    def scene_word_prompt() -> str: return WORDS_AND_PROMPTS[scene_order[current_idx]][1]
+    def scene_bg_prompt()   -> str: return WORDS_AND_PROMPTS[scene_order[current_idx]][2]
 
-    # ── Camera state ───────────────────────────────────────────────────────────
-    cam_rot   = np.eye(3, dtype=np.float64)
-    cam_trans = np.zeros(3, dtype=np.float64)
-    total_yaw   = 0.0
-    total_pitch = 0.0
+    # ── Navigation state ───────────────────────────────────────────────────────
+    # total_yaw in degrees [0, 360); 4 reference images at 0°/90°/180°/270°.
+    # ref 0 = N (word prompt); refs 1-3 = E/S/W (bg prompt).
+    # ovie_cache[ref][delta_int] = cached PIL at 3°-grid multiples from that reference.
+    total_yaw   = 0.0           # degrees
+    total_pitch = 0.0           # radians, ±MAX_PITCH
+    cam_z       = 0.0           # ±MAX_Z
 
-    lock      = threading.Lock()
+    lock       = threading.Lock()
     generating = threading.Event()
     held_key: list[int | None] = [None]
 
-    # Shared mutable references updated by workers
-    original_raw:     list[Image.Image] = [None]  # type: ignore[list-item]
-    original_display: list[Image.Image] = [None]  # type: ignore[list-item]
-    current_display:  list[Image.Image] = [None]  # type: ignore[list-item]
+    ref_raws:   list[Image.Image | None] = [None] * NUM_REFS
+    ovie_cache: list[dict[int, Image.Image]] = [{} for _ in range(NUM_REFS)]
+    north_display:   list[Image.Image | None] = [None]
+    current_display: list[Image.Image | None] = [None]
 
-    def _reset_camera() -> None:
-        cam_rot[:]   = np.eye(3)
-        cam_trans[:] = 0.0
-        nonlocal total_yaw, total_pitch
-        total_yaw   = 0.0
+    def _reset_camera(yaw: float = 0.0) -> None:
+        nonlocal total_yaw, total_pitch, cam_z
+        total_yaw   = yaw
         total_pitch = 0.0
+        cam_z       = 0.0
+
+    # ── OVIE helpers ───────────────────────────────────────────────────────────
+    def _ovie_step(img: Image.Image, delta_yaw_deg: float) -> Image.Image:
+        """One OVIE inference with a relative yaw of delta_yaw_deg from img's viewpoint."""
+        rot   = _rot_y(np.radians(delta_yaw_deg))
+        cam_t = make_cam_token(rot, np.zeros(3), ovie_size, device)
+        img_t = ToTensor()(img).unsqueeze(0).to(device)
+        with torch.inference_mode():
+            pred = ovie(x=img_t, cam_params=cam_t)
+        return tensor_to_pil(pred)
+
+    def _ensure_cached(ref_idx: int, target_deg: float) -> Image.Image:
+        """
+        Return the OVIE view at target_deg from reference ref_idx.
+
+        Chain grid: cached at multiples of CHAIN_STEP_DEG (9°). For arbitrary
+        target_deg the chain is built up to floor(|target|/9)*9, then one extra
+        OVIE call covers the sub-grid remainder.  This allows fine-grained steps
+        (e.g. 0.5°) while still anchoring stability at 9° grid points.
+        """
+        sign    = 1 if target_deg >= 0 else -1
+        n_links = int(abs(target_deg) / CHAIN_STEP_DEG)   # floor
+        grid_int = int(n_links * CHAIN_STEP_DEG) * sign
+
+        # Build grid chain up to grid_int
+        step = int(CHAIN_STEP_DEG) * sign
+        prev = 0
+        for _ in range(n_links):
+            cur = prev + step
+            if cur not in ovie_cache[ref_idx]:
+                ovie_cache[ref_idx][cur] = _ovie_step(ovie_cache[ref_idx][prev],
+                                                       float(step))
+            prev = cur
+
+        chain_img = ovie_cache[ref_idx].get(grid_int, ref_raws[ref_idx])
+
+        # Sub-grid remainder (not cached, generated fresh each call)
+        remaining = target_deg - grid_int
+        if abs(remaining) > 0.01:
+            return _ovie_step(chain_img, remaining)
+        return chain_img
+
+    def _get_yaw_raw(yaw_deg: float) -> Image.Image:
+        """
+        Return the OVIE view for yaw_deg with a fade-to-black at the midpoint
+        between adjacent reference images.
+
+        Only the nearest reference is used — no two-image blending, no seam.
+        Brightness = cos²(d · π/2), where d is the normalised distance to the
+        midpoint (0 at the reference, 1 at the midpoint).  This gives a smooth
+        curve with zero derivative at both ends: the view stays bright near the
+        reference and reaches pure black exactly at the midpoint.
+
+        OVIE quality degradation from long chains is irrelevant near the
+        midpoint because the image is nearly black there anyway.  When
+        brightness < 1 % we skip the OVIE call entirely and return black.
+        """
+        theta  = yaw_deg % 360.0
+        sector = int(theta / SECTOR_DEG) % NUM_REFS
+        t      = (theta % SECTOR_DEG) / SECTOR_DEG
+
+        # Nearest reference and signed angular offset from it
+        if t <= 0.5:
+            ref_idx = sector
+            delta   = t * SECTOR_DEG                 # 0 → SECTOR_DEG/2
+        else:
+            ref_idx = (sector + 1) % NUM_REFS
+            delta   = (t - 1.0) * SECTOR_DEG         # -SECTOR_DEG/2 → 0
+
+        d          = abs(delta) / (SECTOR_DEG / 2.0)          # 0 at ref, 1 at midpoint
+        brightness = np.cos(d * (np.pi / 2.0)) ** 2           # 1 → 0, smooth at both ends
+
+        if brightness < 0.01:
+            return Image.new("RGB", (ovie_size, ovie_size), (0, 0, 0))
+
+        img = _ensure_cached(ref_idx, delta)
+
+        if brightness > 0.999:
+            return img
+
+        arr = np.array(img, dtype=np.float32) * brightness
+        return Image.fromarray(arr.round().astype(np.uint8), mode="RGB")
+
+    def get_full_view(yaw_deg: float, pitch_rad: float, z: float) -> Image.Image:
+        """
+        Return a postprocessed display image with yaw, pitch, and Z applied.
+        Pitch and Z are applied as a single additional OVIE step on the yaw view.
+        """
+        raw = _get_yaw_raw(yaw_deg)
+        if abs(pitch_rad) > 1e-6 or abs(z) > 1e-6:
+            rot   = _rot_x(pitch_rad)
+            trans = np.array([0.0, 0.0, z])
+            cam_t = make_cam_token(rot, trans, ovie_size, device)
+            img_t = ToTensor()(raw).unsqueeze(0).to(device)
+            with torch.inference_mode():
+                pred = ovie(x=img_t, cam_params=cam_t)
+            raw = tensor_to_pil(pred)
+        return postprocess(raw)
 
     # ── MIRO worker ────────────────────────────────────────────────────────────
-    def load_scene(prompt: str) -> None:
-        nonlocal total_yaw, total_pitch
-
+    def load_scene(word_prompt: str, bg_prompt: str) -> None:
+        nonlocal total_yaw, total_pitch, cam_z
         print(f"Generating scene {current_idx + 1}/{len(WORDS_AND_PROMPTS)} …")
+        def _resize(img: Image.Image) -> Image.Image:
+            return img.resize((ovie_size, ovie_size), Image.Resampling.BICUBIC)
+
         with torch.inference_mode():
-            images = miro(
-                prompt,
+            north_imgs = miro(
+                word_prompt,
                 num_inference_steps=args.steps,
                 guidance_scale=args.guidance,
                 num_images_per_prompt=1,
                 reward_targets=MIRO_REWARDS,
                 generator=generator,
             )
-        new_image = images[0]
-        new_raw   = new_image.resize((ovie_size, ovie_size), Image.Resampling.BICUBIC)
-        new_disp  = postprocess(new_image)
+            bg_imgs = miro(
+                bg_prompt,
+                num_inference_steps=args.steps,
+                guidance_scale=args.guidance,
+                num_images_per_prompt=3,
+                reward_targets=MIRO_REWARDS,
+                generator=generator,
+            )
+
+        # refs: 0=N(word), 1=E, 2=S, 3=W
+        new_raws = [
+            _resize(north_imgs[0]),
+            _resize(bg_imgs[0]),
+            _resize(bg_imgs[1]),
+            _resize(bg_imgs[2]),
+        ]
+        n_disp     = postprocess(north_imgs[0])
+        start_ref  = random.randrange(NUM_REFS)
+        start_disp = postprocess(new_raws[start_ref]) if start_ref != 0 else n_disp
 
         with lock:
-            original_raw[0]     = new_raw
-            original_display[0] = new_disp
-            current_display[0]  = new_disp
-            _reset_camera()
+            for i in range(NUM_REFS):
+                ref_raws[i] = new_raws[i]
+                ovie_cache[i].clear()
+                ovie_cache[i][0] = new_raws[i]
+            north_display[0]   = n_disp
+            current_display[0] = start_disp
+            _reset_camera(start_ref * SECTOR_DEG)
 
         generating.clear()
 
-    # ── OVIE worker ────────────────────────────────────────────────────────────
+    # ── OVIE navigation worker ─────────────────────────────────────────────────
     def move(initial_key: int) -> None:
-        nonlocal total_yaw, total_pitch
-
+        nonlocal total_yaw, total_pitch, cam_z
         key = initial_key
+        turn_deg = np.degrees(CAMERA_TURN_ANGLE)
         while True:
-            new_rot   = cam_rot.copy()
-            new_trans = cam_trans.copy()
             new_yaw   = total_yaw
             new_pitch = total_pitch
+            new_z     = cam_z
 
-            if key == pygame.K_z:
-                candidate = cam_trans[2] + CAMERA_STEP
-                if abs(candidate) > MAX_Z:
-                    break
-                new_trans[2] = candidate
-            elif key == pygame.K_s:
-                candidate = cam_trans[2] - CAMERA_STEP
-                if abs(candidate) > MAX_Z:
-                    break
-                new_trans[2] = candidate
-            elif key == pygame.K_LEFT:
-                candidate = total_yaw - CAMERA_TURN_ANGLE
-                if abs(candidate) > MAX_YAW:
-                    break
-                R = _rot_y(-CAMERA_TURN_ANGLE)
-                new_rot, new_trans, new_yaw = R @ cam_rot, R @ cam_trans, candidate
+            if key == pygame.K_LEFT:
+                new_yaw = (total_yaw - turn_deg) % 360.0
             elif key == pygame.K_RIGHT:
-                candidate = total_yaw + CAMERA_TURN_ANGLE
-                if abs(candidate) > MAX_YAW:
-                    break
-                R = _rot_y(CAMERA_TURN_ANGLE)
-                new_rot, new_trans, new_yaw = R @ cam_rot, R @ cam_trans, candidate
+                new_yaw = (total_yaw + turn_deg) % 360.0
             elif key == pygame.K_UP:
                 candidate = total_pitch - CAMERA_TURN_ANGLE
                 if abs(candidate) > MAX_PITCH:
                     break
-                R = _rot_x(-CAMERA_TURN_ANGLE)
-                new_rot, new_trans, new_pitch = R @ cam_rot, R @ cam_trans, candidate
+                new_pitch = candidate
             elif key == pygame.K_DOWN:
                 candidate = total_pitch + CAMERA_TURN_ANGLE
                 if abs(candidate) > MAX_PITCH:
                     break
-                R = _rot_x(CAMERA_TURN_ANGLE)
-                new_rot, new_trans, new_pitch = R @ cam_rot, R @ cam_trans, candidate
+                new_pitch = candidate
+            elif key == pygame.K_z:
+                candidate = cam_z + CAMERA_STEP
+                if abs(candidate) > MAX_Z:
+                    break
+                new_z = candidate
+            elif key == pygame.K_s:
+                candidate = cam_z - CAMERA_STEP
+                if abs(candidate) > MAX_Z:
+                    break
+                new_z = candidate
+            else:
+                break
 
-            with torch.inference_mode():
-                img_t = ToTensor()(original_raw[0]).unsqueeze(0).to(device)
-                cam_t = make_cam_token(new_rot, new_trans, ovie_size, device)
-                pred  = ovie(x=img_t, cam_params=cam_t)
+            new_display = get_full_view(new_yaw, new_pitch, new_z)
 
             with lock:
-                current_display[0] = postprocess(tensor_to_pil(pred))
-                cam_rot[:]   = new_rot
-                cam_trans[:] = new_trans
-                total_yaw    = new_yaw
-                total_pitch  = new_pitch
+                current_display[0] = new_display
+                total_yaw   = new_yaw
+                total_pitch = new_pitch
+                cam_z       = new_z
 
             next_key = held_key[0]
             if next_key is None:
@@ -411,10 +618,10 @@ def main() -> None:
 
         generating.clear()
 
-    # ── Generate first scene ───────────────────────────────────────────────────
+    # ── Generate first scene (synchronous, before window opens) ───────────────
     print(f'Scene 1/{len(WORDS_AND_PROMPTS)}: generating …')
     generating.set()
-    load_scene(scene_prompt())   # runs synchronously before the window opens
+    load_scene(scene_word_prompt(), scene_bg_prompt())
 
     # ── Pygame setup ───────────────────────────────────────────────────────────
     pygame.init()
@@ -425,7 +632,7 @@ def main() -> None:
     font       = pygame.font.SysFont("monospace", 14)
     font_large = pygame.font.SysFont("monospace", 32, bold=True)
 
-    clock = pygame.time.Clock()
+    clock   = pygame.time.Clock()
     running = True
 
     while running:
@@ -443,19 +650,21 @@ def main() -> None:
                         typed_text = ""
 
                     elif event.key == pygame.K_RETURN and not generating.is_set():
-                        guess = typed_text.strip().upper()
+                        guess      = typed_text.strip().upper()
                         text_mode  = False
                         typed_text = ""
 
                         if guess == scene_word():
                             found_words.append(scene_word())
-                            if len(found_words) < WORDS_TO_WIN and current_idx < len(WORDS_AND_PROMPTS) - 1:
+                            if len(found_words) < WORDS_TO_WIN and \
+                                    current_idx < len(WORDS_AND_PROMPTS) - 1:
                                 current_idx += 1
                                 generating.set()
                                 threading.Thread(
-                                    target=load_scene, args=(scene_prompt(),), daemon=True
+                                    target=load_scene,
+                                    args=(scene_word_prompt(), scene_bg_prompt()),
+                                    daemon=True,
                                 ).start()
-                            # else: all words found, nothing to generate
                         else:
                             lives -= 1
                             if lives <= 0:
@@ -463,7 +672,9 @@ def main() -> None:
                             else:
                                 generating.set()
                                 threading.Thread(
-                                    target=load_scene, args=(scene_prompt(),), daemon=True
+                                    target=load_scene,
+                                    args=(scene_word_prompt(), scene_bg_prompt()),
+                                    daemon=True,
                                 ).start()
 
                     elif event.key == pygame.K_BACKSPACE:
@@ -486,18 +697,19 @@ def main() -> None:
                         show_help = not show_help
                     elif event.key == pygame.K_RETURN and not generating.is_set() and \
                             (game_over or len(found_words) >= WORDS_TO_WIN):
-                        # Restart — Python random state already advanced, so shuffle differs
                         random.shuffle(scene_order)
                         current_idx = 0
                         found_words.clear()
-                        lives     = 3
-                        game_over = False
-                        show_help = False
+                        lives      = 3
+                        game_over  = False
+                        show_help  = False
                         with lock:
                             _reset_camera()
                         generating.set()
                         threading.Thread(
-                            target=load_scene, args=(scene_prompt(),), daemon=True
+                            target=load_scene,
+                            args=(scene_word_prompt(), scene_bg_prompt()),
+                            daemon=True,
                         ).start()
                     elif event.key == pygame.K_TAB and not generating.is_set() \
                             and not game_over and not show_help:
@@ -505,7 +717,7 @@ def main() -> None:
                         typed_text = ""
                     elif event.key == pygame.K_r and not generating.is_set():
                         with lock:
-                            current_display[0] = original_display[0]
+                            current_display[0] = north_display[0]
                             _reset_camera()
                     elif event.key in _NAV_KEYS and not show_help:
                         held_key[0] = event.key
@@ -529,17 +741,14 @@ def main() -> None:
         if generating.is_set():
             lbl = font.render(" Generating… ", True, (220, 220, 220), (0, 0, 0))
         else:
-            yaw_s   = f"{np.degrees(total_yaw):+.0f}°"
-            pitch_s = f"{np.degrees(total_pitch):+.0f}°"
-            lbl = font.render(f" yaw {yaw_s}  pitch {pitch_s}  z {cam_trans[2]:+.2f} ",
-                              True, (160, 160, 160), (0, 0, 0))
+            lbl = font.render(
+                f" yaw {total_yaw:.0f}°  pitch {np.degrees(total_pitch):+.0f}°  z {cam_z:+.2f} ",
+                True, (160, 160, 160), (0, 0, 0))
         screen.blit(lbl, (8, 8))
 
         # Lives + found-words panel (top-right)
         n_found = len(found_words)
-
-        # Draw lives as circles (no font rendering, works on any system)
-        _LR, _LG = 10, 8           # circle radius, gap between circles
+        _LR, _LG = 10, 8
         _lx0 = WINDOW_SIZE - 8 - 3 * (2 * _LR) - 2 * _LG + _LR
         _lcy = 8 + _LR
         for i in range(3):
@@ -578,18 +787,14 @@ def main() -> None:
             BOX_W, BOX_H = 400, 90
             box_x = (WINDOW_SIZE - BOX_W) // 2
             box_y = (DISPLAY_HEIGHT - BOX_H) // 2
-
             overlay = pygame.Surface((BOX_W, BOX_H), pygame.SRCALPHA)
             overlay.fill((0, 0, 0, 210))
             screen.blit(overlay, (box_x, box_y))
-
-            # Underscore-filled input field: typed chars + remaining underscores
-            field = (typed_text + "_" * (INPUT_FIELD_LEN - len(typed_text)))
+            field      = typed_text + "_" * (INPUT_FIELD_LEN - len(typed_text))
             field_surf = font_large.render(field, True, (255, 255, 255))
             screen.blit(field_surf,
                         (box_x + (BOX_W - field_surf.get_width()) // 2,
                          box_y + (BOX_H - field_surf.get_height()) // 2))
-
             hint = font.render(" ENTER to guess · ESC to cancel ",
                                True, (160, 160, 160))
             screen.blit(hint, (box_x + (BOX_W - hint.get_width()) // 2,
@@ -605,8 +810,8 @@ def main() -> None:
                 "  CONTROLS",
                 "",
                 "  Z / S         move forward / backward",
-                "  Left / Right  turn left / right",
-                "  Up / Down     look up / down",
+                "  Left / Right  yaw (full 360°)",
+                "  Up / Down     pitch (look up / down)",
                 "  R             reset camera",
                 "",
                 "  Tab           open word-input field",
@@ -616,13 +821,13 @@ def main() -> None:
                 "  ?             show / hide help",
                 "  ESC / Q       quit",
             ]
-            lh   = font.get_linesize()
-            pad  = 16
-            bw   = 420
-            bh   = len(LINES) * lh + 2 * pad
-            bx   = (WINDOW_SIZE - bw) // 2
-            by   = (DISPLAY_HEIGHT - bh) // 2
-            ov   = pygame.Surface((bw, bh), pygame.SRCALPHA)
+            lh  = font.get_linesize()
+            pad = 16
+            bw  = 380
+            bh  = len(LINES) * lh + 2 * pad
+            bx  = (WINDOW_SIZE - bw) // 2
+            by  = (DISPLAY_HEIGHT - bh) // 2
+            ov  = pygame.Surface((bw, bh), pygame.SRCALPHA)
             ov.fill((0, 0, 0, 220))
             screen.blit(ov, (bx, by))
             for k, line in enumerate(LINES):

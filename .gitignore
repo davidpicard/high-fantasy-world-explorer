@@ -1,5 +1,5 @@
-# Generated images
-*.png
+# Generated images (root only, not assets/)
+/*.png
 
 # Python
 __pycache__/

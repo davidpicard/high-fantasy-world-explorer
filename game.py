@@ -319,6 +319,12 @@ SECTOR_DEG      = 360.0 / NUM_REFS   # 90°
 CHAIN_STEP_DEG  = 2.0
 MAX_CHAIN_STEPS = 16    # 16 × 2° = 32° reliable range per reference
 
+# Brightness fade: hold at 1.0 until d=FADE_START (fraction of half-sector),
+# then cos⁴ drop to 0 at the midpoint.  Lower = more conservative (fades
+# sooner); raise it if OVIE looks clean further from the reference.
+# FADE_START=0.3 → full brightness within 13.5° of each reference image.
+FADE_START = 0.3
+
 MIRO_REWARDS = {"hpsv2_score": 0.75, "vqa_score": 0.5, "sciscore_score": 0.5}
 
 BAYER_4x4 = np.array(
@@ -507,8 +513,12 @@ def main() -> None:
             ref_idx = (sector + 1) % NUM_REFS
             delta   = (t - 1.0) * SECTOR_DEG
 
-        d          = abs(delta) / (SECTOR_DEG / 2.0)
-        brightness = np.cos(d * (np.pi / 2.0)) ** 2
+        d = abs(delta) / (SECTOR_DEG / 2.0)
+        if d <= FADE_START:
+            brightness = 1.0
+        else:
+            d2         = (d - FADE_START) / (1.0 - FADE_START)
+            brightness = np.cos(d2 * (np.pi / 2.0)) ** 4
 
         if brightness < 0.01:
             return postprocess(Image.new("RGB", (ovie_size, ovie_size), (0, 0, 0)))

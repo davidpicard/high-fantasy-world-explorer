@@ -7,7 +7,7 @@ the hidden word each scene depicts. Find 10 words to win.
 
 ## Demo
 
-![Demo Video](./assets/victory_mirovie.mp4)
+![Demo Video](https://github.com/davidpicard/high-fantasy-world-explorer/raw/refs/heads/main/assets/victory_mirovie.mp4)
 
 ## Screenshots
 

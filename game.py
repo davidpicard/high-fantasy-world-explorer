@@ -329,6 +329,13 @@ FADE_START = 0.3
 
 MIRO_REWARDS = {"hpsv2_score": 0.75, "vqa_score": 0.5, "sciscore_score": 0.5}
 
+VICTORY_PROMPT = (
+    "A triumphant lone hero standing atop a crumbling ancient watchtower at golden hour, "
+    "arms raised to the sky, glowing tattered banners waving in warm wind, sunlit valley "
+    "and distant snow-capped mountains stretching to the horizon, epic high fantasy, "
+    "photorealistic"
+)
+
 COMPASS_H   = 28   # px: compass strip at bottom (labels + ticks)
 COMPASS_PPD = 4    # pixels per degree → ±96° visible across 768px
 
@@ -465,13 +472,20 @@ def main() -> None:
     typed_text = ""
     show_help  = False
 
-    # Scene-transition animation (correct guess)
+    # Scene-transition animation (correct guess, non-victory)
     TRANS_HOLD  = 1.5   # seconds: word shown at full brightness
     TRANS_FADE  = 2.5   # seconds: fade to black
-    transition_word  = ""      # non-empty while animating
+    transition_word  = ""
     transition_start = 0.0
-    scene_alpha      = 1.0     # 0.0 = black, 1.0 = full; drives background brightness
+    scene_alpha      = 1.0
     was_generating   = False   # edge-detect generating → done to restore scene_alpha
+
+    # Victory animation (separate state machine, triggered on final word)
+    WIN_FADE_OUT = 2.5   # seconds: last scene fades to black
+    WIN_FADE_IN  = 1.5   # seconds: victory image fades in
+    win_phase    = ""    # "fade_out" | "black" | "fade_in" | "shown"
+    win_t0       = 0.0
+    victory_display: list = [None]
 
     def scene_word()        -> str: return WORDS_AND_PROMPTS[scene_order[current_idx]][0]
     def scene_word_prompt() -> str: return WORDS_AND_PROMPTS[scene_order[current_idx]][1]
@@ -629,6 +643,21 @@ def main() -> None:
 
         generating.clear()
 
+    def load_victory() -> None:
+        print("Generating victory scene …")
+        with torch.inference_mode():
+            v_imgs = miro(
+                VICTORY_PROMPT,
+                num_inference_steps=args.steps,
+                guidance_scale=args.guidance,
+                num_images_per_prompt=1,
+                reward_targets=MIRO_REWARDS,
+                generator=generator,
+            )
+        with lock:
+            victory_display[0] = postprocess(v_imgs[0])
+        generating.clear()
+
     # ── OVIE navigation worker ─────────────────────────────────────────────────
     def move(initial_key: int) -> None:
         nonlocal total_yaw, total_pitch, cam_z
@@ -761,6 +790,14 @@ def main() -> None:
                                     args=(scene_word_prompt(), scene_bg_prompt()),
                                     daemon=True,
                                 ).start()
+                            elif len(found_words) >= WORDS_TO_WIN:
+                                # Final word — start win animation + generate victory scene
+                                win_phase = "fade_out"
+                                win_t0    = time.time()
+                                generating.set()
+                                threading.Thread(
+                                    target=load_victory, daemon=True
+                                ).start()
                         else:
                             lives -= 1
                             if lives <= 0:
@@ -796,10 +833,14 @@ def main() -> None:
                         random.shuffle(scene_order)
                         current_idx = 0
                         found_words.clear()
-                        lives      = 3
-                        game_over  = False
-                        show_help  = False
+                        lives         = 3
+                        game_over     = False
+                        show_help     = False
+                        win_phase     = ""
+                        scene_alpha   = 1.0
+                        was_generating = False
                         with lock:
+                            victory_display[0] = None
                             _reset_camera()
                         generating.set()
                         threading.Thread(
@@ -828,45 +869,73 @@ def main() -> None:
                     held_key[0] = None
 
         # ── Render ─────────────────────────────────────────────────────────────
+        _now = time.time()
         with lock:
             display_img = current_display[0]
+            v_img       = victory_display[0]
 
-        # Detect generating → done to restore full brightness after fade
+        n_found       = len(found_words)
         is_generating = generating.is_set()
-        if was_generating and not is_generating:
-            scene_alpha = 1.0
-        was_generating = is_generating
 
-        # Update transition animation
-        if transition_word:
-            elapsed = time.time() - transition_start
-            if elapsed < TRANS_HOLD:
-                scene_alpha = 1.0
-            elif elapsed < TRANS_HOLD + TRANS_FADE:
-                scene_alpha = 1.0 - (elapsed - TRANS_HOLD) / TRANS_FADE
-            else:
-                scene_alpha = 0.0
-                transition_word = ""
-
-        # Blit scene with current brightness
         screen.fill((0, 0, 0))
-        if scene_alpha > 0.01:
-            scene_surf = pil_to_surface(display_img)
-            scene_surf.set_alpha(int(scene_alpha * 255))
-            screen.blit(scene_surf, (0, _crop_y))
 
-        # Word-found overlay (visible while transition_word is set)
-        if transition_word:
-            elapsed = time.time() - transition_start
-            word_alpha = 1.0
-            if elapsed >= TRANS_HOLD:
-                word_alpha = max(0.0, 1.0 - (elapsed - TRANS_HOLD) / TRANS_FADE)
-            word_surf = font_large.render(f"  {transition_word}  ",
-                                          True, (219, 182, 73), (0, 0, 0))
-            word_surf.set_alpha(int(word_alpha * 255))
-            screen.blit(word_surf,
-                        ((WINDOW_SIZE - word_surf.get_width()) // 2,
-                         (DISPLAY_HEIGHT - word_surf.get_height()) // 2))
+        if n_found >= WORDS_TO_WIN:
+            # ── Win animation: fade scene out → (black) → fade victory image in ──
+            if win_phase == "fade_out":
+                scene_alpha = max(0.0, 1.0 - (_now - win_t0) / WIN_FADE_OUT)
+                if scene_alpha == 0.0:
+                    win_phase = "black" if v_img is None else "fade_in"
+                    win_t0 = _now
+            elif win_phase == "black":
+                scene_alpha = 0.0
+                if v_img is not None:
+                    win_phase = "fade_in"
+                    win_t0 = _now
+
+            if win_phase in ("fade_in", "shown") and v_img is not None:
+                _v_alpha = min((_now - win_t0) / WIN_FADE_IN, 1.0)
+                if _v_alpha >= 1.0:
+                    win_phase = "shown"
+                _vs = pil_to_surface(v_img)
+                _vs.set_alpha(int(_v_alpha * 255))
+                screen.blit(_vs, (0, _crop_y))
+            elif win_phase == "fade_out" and scene_alpha > 0.01:
+                _ss = pil_to_surface(display_img)
+                _ss.set_alpha(int(scene_alpha * 255))
+                screen.blit(_ss, (0, _crop_y))
+
+        else:
+            # ── Normal scene transition ─────────────────────────────────────────
+            if transition_word:
+                elapsed = _now - transition_start
+                if elapsed < TRANS_HOLD:
+                    scene_alpha = 1.0
+                elif elapsed < TRANS_HOLD + TRANS_FADE:
+                    scene_alpha = 1.0 - (elapsed - TRANS_HOLD) / TRANS_FADE
+                else:
+                    scene_alpha = 0.0
+                    transition_word = ""
+
+            if was_generating and not is_generating:
+                scene_alpha = 1.0
+            was_generating = is_generating
+
+            if scene_alpha > 0.01:
+                scene_surf = pil_to_surface(display_img)
+                scene_surf.set_alpha(int(scene_alpha * 255))
+                screen.blit(scene_surf, (0, _crop_y))
+
+            if transition_word:
+                elapsed = _now - transition_start
+                word_alpha = 1.0
+                if elapsed >= TRANS_HOLD:
+                    word_alpha = max(0.0, 1.0 - (elapsed - TRANS_HOLD) / TRANS_FADE)
+                word_surf = font_large.render(f"  {transition_word}  ",
+                                              True, (219, 182, 73), (0, 0, 0))
+                word_surf.set_alpha(int(word_alpha * 255))
+                screen.blit(word_surf,
+                            ((WINDOW_SIZE - word_surf.get_width()) // 2,
+                             (DISPLAY_HEIGHT - word_surf.get_height()) // 2))
 
         # Status bar (top-left)
         if is_generating:
@@ -878,7 +947,6 @@ def main() -> None:
         screen.blit(lbl, (8, 8))
 
         # Lives + found-words panel (top-right)
-        n_found = len(found_words)
         _LR, _LG = 10, 8
         _lx0 = WINDOW_SIZE - 8 - 3 * (2 * _LR) - 2 * _LG + _LR
         _lcy = 8 + _LR

@@ -26,6 +26,7 @@ import os
 import random
 import sys
 import threading
+import time
 
 import numpy as np
 import pygame
@@ -437,6 +438,14 @@ def main() -> None:
     typed_text = ""
     show_help  = False
 
+    # Scene-transition animation (correct guess)
+    TRANS_HOLD  = 1.5   # seconds: word shown at full brightness
+    TRANS_FADE  = 2.5   # seconds: fade to black
+    transition_word  = ""      # non-empty while animating
+    transition_start = 0.0
+    scene_alpha      = 1.0     # 0.0 = black, 1.0 = full; drives background brightness
+    was_generating   = False   # edge-detect generating → done to restore scene_alpha
+
     def scene_word()        -> str: return WORDS_AND_PROMPTS[scene_order[current_idx]][0]
     def scene_word_prompt() -> str: return WORDS_AND_PROMPTS[scene_order[current_idx]][1]
     def scene_bg_prompt()   -> str: return WORDS_AND_PROMPTS[scene_order[current_idx]][2]
@@ -715,6 +724,9 @@ def main() -> None:
                             found_words.append(scene_word())
                             if len(found_words) < WORDS_TO_WIN and \
                                     current_idx < len(WORDS_AND_PROMPTS) - 1:
+                                # Start transition animation; load next scene in parallel
+                                transition_word  = guess
+                                transition_start = time.time()
                                 current_idx += 1
                                 generating.set()
                                 threading.Thread(
@@ -792,10 +804,45 @@ def main() -> None:
         with lock:
             display_img = current_display[0]
 
-        screen.blit(pil_to_surface(display_img), (0, _crop_y))
+        # Detect generating → done to restore full brightness after fade
+        is_generating = generating.is_set()
+        if was_generating and not is_generating:
+            scene_alpha = 1.0
+        was_generating = is_generating
+
+        # Update transition animation
+        if transition_word:
+            elapsed = time.time() - transition_start
+            if elapsed < TRANS_HOLD:
+                scene_alpha = 1.0
+            elif elapsed < TRANS_HOLD + TRANS_FADE:
+                scene_alpha = 1.0 - (elapsed - TRANS_HOLD) / TRANS_FADE
+            else:
+                scene_alpha = 0.0
+                transition_word = ""
+
+        # Blit scene with current brightness
+        screen.fill((0, 0, 0))
+        if scene_alpha > 0.01:
+            scene_surf = pil_to_surface(display_img)
+            scene_surf.set_alpha(int(scene_alpha * 255))
+            screen.blit(scene_surf, (0, _crop_y))
+
+        # Word-found overlay (visible while transition_word is set)
+        if transition_word:
+            elapsed = time.time() - transition_start
+            word_alpha = 1.0
+            if elapsed >= TRANS_HOLD:
+                word_alpha = max(0.0, 1.0 - (elapsed - TRANS_HOLD) / TRANS_FADE)
+            word_surf = font_large.render(f"  {transition_word}  ",
+                                          True, (219, 182, 73), (0, 0, 0))
+            word_surf.set_alpha(int(word_alpha * 255))
+            screen.blit(word_surf,
+                        ((WINDOW_SIZE - word_surf.get_width()) // 2,
+                         (DISPLAY_HEIGHT - word_surf.get_height()) // 2))
 
         # Status bar (top-left)
-        if generating.is_set():
+        if is_generating:
             lbl = font.render(" Generating… ", True, (220, 220, 220), (0, 0, 0))
         else:
             lbl = font.render(

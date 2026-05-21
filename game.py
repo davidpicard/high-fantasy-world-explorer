@@ -22,6 +22,7 @@ Controls:
 """
 
 import argparse
+import json
 import os
 import random
 import sys
@@ -57,7 +58,7 @@ from miro import MiroPipeline  # noqa: E402
 #                      OVIE lateral synthesis stays coherent).
 # background_prompt  – strongly differentiated colour palette / biome so each
 #                      scene is spatially distinct from every other.
-WORDS_AND_PROMPTS = [
+_BUILTIN_WORDS_AND_PROMPTS = [
     # scenes ──────────────────────────────────────────────────────────────────
     ("CASTLE",
      "A grand medieval stone castle rising from mist-shrouded sea cliffs at golden hour, tall "
@@ -409,6 +410,9 @@ def main() -> None:
     parser.add_argument("--seed",     type=int,   default=3407)
     parser.add_argument("--steps",    type=int,   default=40)
     parser.add_argument("--guidance", type=float, default=7.0)
+    parser.add_argument("--wordpack", type=str,   default=None,
+                        metavar="PATH",
+                        help="JSON word pack to use instead of the built-in list")
     args = parser.parse_args()
 
     if not torch.cuda.is_available():
@@ -426,6 +430,29 @@ def main() -> None:
 
     random.seed(args.seed)
     generator = torch.Generator(device).manual_seed(args.seed)
+
+    # ── Word pack ──────────────────────────────────────────────────────────────
+    WORDS_AND_PROMPTS = _BUILTIN_WORDS_AND_PROMPTS
+    _wp = args.wordpack
+    if not _wp:
+        _auto = os.path.join(os.path.dirname(os.path.abspath(__file__)), "words.json")
+        if os.path.isfile(_auto):
+            _wp = _auto
+    if _wp:
+        try:
+            with open(_wp) as _f:
+                _raw = json.load(_f)
+            WORDS_AND_PROMPTS = [
+                (e["word"].upper().strip(), e["prompt"], e["background"])
+                for e in _raw
+            ]
+            print(f"Loaded {len(WORDS_AND_PROMPTS)}-word pack from {_wp}")
+        except Exception as _e:
+            print(f"Warning: failed to load word pack '{_wp}': {_e}")
+            print("Falling back to built-in list.")
+            WORDS_AND_PROMPTS = _BUILTIN_WORDS_AND_PROMPTS
+    WORDS_TO_WIN    = min(10, len(WORDS_AND_PROMPTS))
+    INPUT_FIELD_LEN = max(max(len(w) for w, _, _ in WORDS_AND_PROMPTS), 10)
 
     # ── Game state ─────────────────────────────────────────────────────────────
     scene_order = list(range(len(WORDS_AND_PROMPTS)))

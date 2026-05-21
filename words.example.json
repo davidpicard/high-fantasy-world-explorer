@@ -1,0 +1,17 @@
+[
+  {
+    "word": "DRAGON",
+    "prompt": "A massive red dragon perched on a volcanic mountain peak, wings spread wide against a stormy sky with lightning, glowing molten rock below, smoke rising from its nostrils, high fantasy, photorealistic",
+    "background": "Barren volcanic mountain slopes at dusk, rivers of glowing lava cutting through dark basalt, ash clouds drifting across a deep orange sky, no dragon, high fantasy, photorealistic"
+  },
+  {
+    "word": "WIZARD",
+    "prompt": "An ancient wizard standing in a moonlit tower study lined with floating spell books and glowing arcane symbols, long white beard and starry robes, staff crackling with blue lightning, high fantasy, photorealistic",
+    "background": "A moonlit stone tower interior at night, arched windows showing a star-filled sky, empty wooden shelves and dusty floor, soft silver light, no figure, high fantasy, photorealistic"
+  },
+  {
+    "word": "GOLEM",
+    "prompt": "A towering clay golem awakening in an ancient forge, glowing runes etched across its body, surrounded by crackling magical energy and floating embers, high fantasy, photorealistic",
+    "background": "An ancient stone forge chamber deep underground, glowing furnace in the background, scattered clay fragments and carved rune tablets on the floor, no golem, high fantasy, photorealistic"
+  }
+]

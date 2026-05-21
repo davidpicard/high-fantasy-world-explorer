@@ -5,6 +5,10 @@ A retro pixel-art word-guessing game powered by AI image generation.
 Explore AI-generated high-fantasy scenes using novel-view synthesis, and guess
 the hidden word each scene depicts. Find 10 words to win.
 
+## Demo
+
+<video src="assets/victory_mirovie.mp4" controls width="100%"></video>
+
 ## Screenshots
 
 | | | |

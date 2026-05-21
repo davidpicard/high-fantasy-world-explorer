@@ -327,6 +327,9 @@ FADE_START = 0.3
 
 MIRO_REWARDS = {"hpsv2_score": 0.75, "vqa_score": 0.5, "sciscore_score": 0.5}
 
+COMPASS_H   = 28   # px: compass strip at bottom (labels + ticks)
+COMPASS_PPD = 4    # pixels per degree → ±96° visible across 768px
+
 BAYER_4x4 = np.array(
     [
         [0,  8,  2, 10],
@@ -659,6 +662,7 @@ def main() -> None:
 
     font       = pygame.font.SysFont("monospace", 14)
     font_large = pygame.font.SysFont("monospace", 32, bold=True)
+    font_small = pygame.font.SysFont("monospace", 10)
 
     clock   = pygame.time.Clock()
     running = True
@@ -781,11 +785,18 @@ def main() -> None:
         _lcy = 8 + _LR
         for i in range(3):
             cx = _lx0 + i * (2 * _LR + _LG)
-            pygame.draw.circle(screen, (0, 0, 0),       (cx, _lcy), _LR + 1)
             if i < lives:
-                pygame.draw.circle(screen, (210, 35, 35), (cx, _lcy), _LR)
+                # Shaded sphere — palette-valid reds only
+                pygame.draw.circle(screen, (109,   0,   0), (cx + 1, _lcy + 1), _LR)    # drop shadow
+                pygame.draw.circle(screen, (182,  36,  36), (cx,     _lcy),     _LR)    # base
+                pygame.draw.circle(screen, (219,  73,  73), (cx - 1, _lcy - 1), _LR * 3 // 4)  # lit zone
+                pygame.draw.circle(screen, (219, 146, 109), (cx - 2, _lcy - 2), _LR // 2)      # warm highlight
+                pygame.draw.circle(screen, (219, 182, 182), (cx - 3, _lcy - 3), max(2, _LR // 4))  # specular
             else:
-                pygame.draw.circle(screen, (55, 15, 15), (cx, _lcy), _LR)
+                # Spent sphere — dark, desaturated
+                pygame.draw.circle(screen, ( 36,   0,   0), (cx + 1, _lcy + 1), _LR)
+                pygame.draw.circle(screen, ( 73,   0,   0), (cx,     _lcy),     _LR)
+                pygame.draw.circle(screen, (109,  36,  36), (cx - 1, _lcy - 1), _LR * 2 // 3)
 
         fy = _lcy + _LR + 6
         header = font.render(f" FOUND {n_found}/{WORDS_TO_WIN} ", True, (200, 200, 200), (0, 0, 0))
@@ -828,9 +839,41 @@ def main() -> None:
             screen.blit(hint, (box_x + (BOX_W - hint.get_width()) // 2,
                                 box_y + BOX_H - hint.get_height() - 4))
 
-        # "? help" prompt (bottom-left)
-        help_lbl = font.render(" ? help ", True, (110, 110, 110))
-        screen.blit(help_lbl, (8, DISPLAY_HEIGHT - help_lbl.get_height() - 6))
+        # "? help" prompt (sits just above compass bar)
+        help_lbl = font.render(" ? help ", True, (109, 109, 109))
+        screen.blit(help_lbl,
+                    (8, DISPLAY_HEIGHT - COMPASS_H - help_lbl.get_height() - 4))
+
+        # Compass bar (bottom strip)
+        _cb_top = DISPLAY_HEIGHT - COMPASS_H
+        _cb_cx  = WINDOW_SIZE // 2
+        _tick_bot = DISPLAY_HEIGHT - 2
+        _label_y  = _cb_top + 1
+        pygame.draw.rect(screen, (0, 0, 0), (0, _cb_top, WINDOW_SIZE, COMPASS_H))
+        # Center crosshair
+        pygame.draw.line(screen, (182, 182, 182), (_cb_cx, _cb_top), (_cb_cx, _tick_bot))
+        # Ticks
+        _vis_deg = (WINDOW_SIZE // 2) / COMPASS_PPD  # degrees visible each side
+        for _b in range(int(total_yaw - _vis_deg) - 10,
+                        int(total_yaw + _vis_deg) + 10):
+            if _b % 10 != 0:
+                continue
+            _sx = int(_cb_cx + (_b - total_yaw) * COMPASS_PPD)
+            if _sx < 0 or _sx >= WINDOW_SIZE:
+                continue
+            _bmod = _b % 360
+            if _bmod < 0:
+                _bmod += 360
+            if _bmod % 90 == 0:
+                pygame.draw.line(screen, (182, 182, 182), (_sx, _tick_bot - 12), (_sx, _tick_bot))
+                _card = {0: "N", 90: "E", 180: "S", 270: "W"}[_bmod]
+                _lc   = (219, 182, 73) if _bmod == 0 else (146, 146, 146)
+                _ls   = font_small.render(_card, True, _lc)
+                screen.blit(_ls, (_sx - _ls.get_width() // 2, _label_y))
+            elif _bmod % 45 == 0:
+                pygame.draw.line(screen, (109, 109, 109), (_sx, _tick_bot - 8), (_sx, _tick_bot))
+            else:
+                pygame.draw.line(screen, (73, 73, 73), (_sx, _tick_bot - 4), (_sx, _tick_bot))
 
         # Help overlay
         if show_help:

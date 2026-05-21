@@ -431,92 +431,72 @@ def main() -> None:
             pred = ovie(x=img_t, cam_params=cam_t)
         return tensor_to_pil(pred)
 
-    def _ensure_cached(ref_idx: int, target_deg: float) -> Image.Image:
+    def _ensure_grid(ref_idx: int, target_deg: float) -> tuple[Image.Image, float]:
         """
-        Return the OVIE view at target_deg from reference ref_idx.
-
-        Chain grid: cached at multiples of CHAIN_STEP_DEG (9°). For arbitrary
-        target_deg the chain is built up to floor(|target|/9)*9, then one extra
-        OVIE call covers the sub-grid remainder.  This allows fine-grained steps
-        (e.g. 0.5°) while still anchoring stability at 9° grid points.
+        Build the cached OVIE chain for ref_idx up to the grid point at or
+        below |target_deg|.  Returns (grid_image, remaining_deg) where
+        |remaining_deg| < CHAIN_STEP_DEG.  The remaining sub-grid angle is
+        left to the caller so it can be composed with other transforms.
         """
-        sign    = 1 if target_deg >= 0 else -1
-        n_links = int(abs(target_deg) / CHAIN_STEP_DEG)   # floor
+        sign     = 1 if target_deg >= 0 else -1
+        n_links  = int(abs(target_deg) / CHAIN_STEP_DEG)
         grid_int = int(n_links * CHAIN_STEP_DEG) * sign
-
-        # Build grid chain up to grid_int
-        step = int(CHAIN_STEP_DEG) * sign
-        prev = 0
+        step     = int(CHAIN_STEP_DEG) * sign
+        prev     = 0
         for _ in range(n_links):
             cur = prev + step
             if cur not in ovie_cache[ref_idx]:
                 ovie_cache[ref_idx][cur] = _ovie_step(ovie_cache[ref_idx][prev],
                                                        float(step))
             prev = cur
+        grid_img = ovie_cache[ref_idx].get(grid_int, ref_raws[ref_idx])
+        return grid_img, target_deg - grid_int
 
-        chain_img = ovie_cache[ref_idx].get(grid_int, ref_raws[ref_idx])
-
-        # Sub-grid remainder (not cached, generated fresh each call)
-        remaining = target_deg - grid_int
-        if abs(remaining) > 0.01:
-            return _ovie_step(chain_img, remaining)
-        return chain_img
-
-    def _get_yaw_raw(yaw_deg: float) -> Image.Image:
+    def get_full_view(yaw_deg: float, pitch_rad: float, z: float) -> Image.Image:
         """
-        Return the OVIE view for yaw_deg with a fade-to-black at the midpoint
-        between adjacent reference images.
+        Return a postprocessed display image for the given camera state.
 
-        Only the nearest reference is used — no two-image blending, no seam.
-        Brightness = cos²(d · π/2), where d is the normalised distance to the
-        midpoint (0 at the reference, 1 at the midpoint).  This gives a smooth
-        curve with zero derivative at both ends: the view stays bright near the
-        reference and reaches pure black exactly at the midpoint.
-
-        OVIE quality degradation from long chains is irrelevant near the
-        midpoint because the image is nearly black there anyway.  When
-        brightness < 1 % we skip the OVIE call entirely and return black.
+        Yaw is handled by the cached OVIE chain (grid at CHAIN_STEP_DEG
+        multiples).  The sub-grid yaw remainder, pitch, and Z are all folded
+        into a single final OVIE call so that non-zero pitch/Z never costs an
+        extra inference on top of the yaw chain — at most one uncached call
+        per frame regardless of camera state.
         """
         theta  = yaw_deg % 360.0
         sector = int(theta / SECTOR_DEG) % NUM_REFS
         t      = (theta % SECTOR_DEG) / SECTOR_DEG
 
-        # Nearest reference and signed angular offset from it
         if t <= 0.5:
             ref_idx = sector
-            delta   = t * SECTOR_DEG                 # 0 → SECTOR_DEG/2
+            delta   = t * SECTOR_DEG
         else:
             ref_idx = (sector + 1) % NUM_REFS
-            delta   = (t - 1.0) * SECTOR_DEG         # -SECTOR_DEG/2 → 0
+            delta   = (t - 1.0) * SECTOR_DEG
 
-        d          = abs(delta) / (SECTOR_DEG / 2.0)          # 0 at ref, 1 at midpoint
-        brightness = np.cos(d * (np.pi / 2.0)) ** 2           # 1 → 0, smooth at both ends
+        d          = abs(delta) / (SECTOR_DEG / 2.0)
+        brightness = np.cos(d * (np.pi / 2.0)) ** 2
 
         if brightness < 0.01:
-            return Image.new("RGB", (ovie_size, ovie_size), (0, 0, 0))
+            return postprocess(Image.new("RGB", (ovie_size, ovie_size), (0, 0, 0)))
 
-        img = _ensure_cached(ref_idx, delta)
+        grid_img, remaining_yaw = _ensure_grid(ref_idx, delta)
 
-        if brightness > 0.999:
-            return img
-
-        arr = np.array(img, dtype=np.float32) * brightness
-        return Image.fromarray(arr.round().astype(np.uint8), mode="RGB")
-
-    def get_full_view(yaw_deg: float, pitch_rad: float, z: float) -> Image.Image:
-        """
-        Return a postprocessed display image with yaw, pitch, and Z applied.
-        Pitch and Z are applied as a single additional OVIE step on the yaw view.
-        """
-        raw = _get_yaw_raw(yaw_deg)
-        if abs(pitch_rad) > 1e-6 or abs(z) > 1e-6:
-            rot   = _rot_x(pitch_rad)
+        # Compose sub-grid yaw + pitch + Z into one OVIE call
+        if abs(remaining_yaw) > 0.01 or abs(pitch_rad) > 1e-6 or abs(z) > 1e-6:
+            rot   = _rot_x(pitch_rad) @ _rot_y(np.radians(remaining_yaw))
             trans = np.array([0.0, 0.0, z])
             cam_t = make_cam_token(rot, trans, ovie_size, device)
-            img_t = ToTensor()(raw).unsqueeze(0).to(device)
+            img_t = ToTensor()(grid_img).unsqueeze(0).to(device)
             with torch.inference_mode():
                 pred = ovie(x=img_t, cam_params=cam_t)
             raw = tensor_to_pil(pred)
+        else:
+            raw = grid_img
+
+        if brightness < 0.999:
+            arr = np.array(raw, dtype=np.float32) * brightness
+            raw = Image.fromarray(arr.round().astype(np.uint8), mode="RGB")
+
         return postprocess(raw)
 
     # ── MIRO worker ────────────────────────────────────────────────────────────

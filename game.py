@@ -51,217 +51,251 @@ from miro import MiroPipeline  # noqa: E402
 
 # ── Word list ─────────────────────────────────────────────────────────────────
 # Each entry: (word, north_prompt, background_prompt)
-# north_prompt  – scene containing the concept to guess (shown facing north)
-# background_prompt – coherent skybox for east / south / west views (no spoiler)
+# north_prompt       – scene at natural viewing distance; subject embedded in a
+#                      unique environment (no close-up or portrait framing so
+#                      OVIE lateral synthesis stays coherent).
+# background_prompt  – strongly differentiated colour palette / biome so each
+#                      scene is spatially distinct from every other.
 WORDS_AND_PROMPTS = [
     # scenes ──────────────────────────────────────────────────────────────────
     ("CASTLE",
-     "A grand medieval stone castle rising from a misty sea cliff at golden hour, tall towers "
-     "with glowing windows, a drawbridge over a dark moat, ravens circling, high fantasy, "
-     "photorealistic",
-     "Rocky coastal cliffs and mist-shrouded sea at golden hour, crashing waves on dark rocks, "
-     "no buildings, high fantasy, photorealistic"),
+     "A grand medieval stone castle rising from mist-shrouded sea cliffs at golden hour, tall "
+     "turrets with glowing amber windows, a drawbridge over a dark moat, ravens circling "
+     "overhead, golden light on grey stone, high fantasy, photorealistic",
+     "Pale grey fog-shrouded sea cliffs at cold dawn, blue-grey ocean mist rolling over dark "
+     "rocks and breaking waves far below, no buildings, high fantasy, photorealistic"),
 
     ("FOREST",
      "An ancient enchanted forest with enormous silver-barked trees, bioluminescent mushrooms "
      "and glowing flowers on the mossy floor, magical golden light rays filtering through the "
-     "dense canopy, high fantasy, photorealistic",
-     "Ancient silver-barked trees and glowing mossy undergrowth in an enchanted forest, magical "
-     "light filtering through dense canopy, high fantasy, photorealistic"),
+     "dense canopy, ethereal mist between the trunks, high fantasy, photorealistic",
+     "Deep moonlit silver-barked forest at night, soft blue moonlight through intertwined "
+     "canopy, glowing blue-white fungi on the dark mossy ground, no golden light, high "
+     "fantasy, photorealistic"),
 
     ("DUNGEON",
      "A dark underground dungeon with rough stone walls and iron-barred cells, flickering "
-     "torchlight casting long shadows on bones and rusted weapons on the damp floor, heavy "
-     "chains on the walls, gothic high fantasy, photorealistic",
-     "Dark stone underground corridors with iron-barred archways, flickering wall torches and "
-     "damp rough-hewn walls, gothic high fantasy, photorealistic"),
+     "torchlight casting long shadows on scattered bones and rusted weapons on the damp floor, "
+     "heavy chains on the walls, gothic high fantasy, photorealistic",
+     "Wet black stone underground corridors with green algae on the walls, cold dripping "
+     "moisture, no torches, dim greenish ambient light seeping from below, gothic high "
+     "fantasy, photorealistic"),
 
     ("TAVERN",
-     "Interior of a warm medieval fantasy tavern, low wooden beams, a large stone fireplace "
-     "roaring with fire, cloaked adventurers at oak tables with tankards of ale, warm "
-     "candlelight, high fantasy, photorealistic",
-     "Warm candlelit medieval interior with low wooden beams, stone walls hung with lanterns, "
-     "empty wooden tables and benches, high fantasy, photorealistic"),
+     "Interior of a warm medieval fantasy tavern at night, low wooden beams, a large stone "
+     "fireplace roaring with orange fire, cloaked adventurers at heavy oak tables with "
+     "tankards of ale, warm amber candlelight, high fantasy, photorealistic",
+     "Warm amber candlelit medieval inn corridor with low wooden beams, empty wooden benches "
+     "against plastered walls hung with iron lanterns, high fantasy, photorealistic"),
 
     ("PORTAL",
      "A swirling circular arcane portal of violet and gold energy suspended between ancient "
-     "moss-covered stone pillars in a ruin, glimpses of another realm through the gateway, "
-     "glowing runes carved into the stone, high fantasy, photorealistic",
-     "Ancient moss-covered stone ruins and pillars in a misty forest, crumbling archways and "
-     "carved stones, no portal, high fantasy, photorealistic"),
+     "moss-covered stone pillars in a ruin, glimpses of another starlit realm through the "
+     "gateway, glowing runes carved into the stone, high fantasy, photorealistic",
+     "Teal-green moss-covered ancient stone ruins in dense morning mist, crumbling arches and "
+     "carved pillars barely visible through thick fog, no portal, high fantasy, photorealistic"),
 
     ("THRONE",
      "An imposing dark throne room with a massive obsidian throne on a raised dais, towering "
-     "pillars lined with burning braziers, tattered battle banners hanging from vaulted "
-     "ceilings, dramatic candlelight, high fantasy, photorealistic",
-     "Dark stone hall with towering pillars, burning braziers and vaulted stone ceilings, "
-     "tattered banners, no throne, high fantasy, photorealistic"),
+     "pillars lined with burning red braziers, tattered battle banners hanging from vaulted "
+     "ceilings, dramatic crimson candlelight, high fantasy, photorealistic",
+     "Deep black stone ceremonial hall with towering pillars and intense red brazier light, "
+     "tattered banners and vaulted stone ceilings, no throne, high fantasy, photorealistic"),
 
     ("RUINS",
-     "Ancient stone ruins of a fallen elven city overgrown with vines and glowing moss, "
-     "crumbling archways and broken statues, mist drifting through, high fantasy, "
-     "photorealistic",
-     "Dense misty ancient forest with crumbling stone archways and fallen carved columns "
-     "overgrown with vines and glowing moss, high fantasy, photorealistic"),
+     "Ancient stone ruins of a fallen elven city overgrown with vines and glowing teal moss, "
+     "crumbling archways and toppled statues, pale grey mist drifting under an overcast sky, "
+     "high fantasy, photorealistic",
+     "Pale grey ancient stone ruins under heavy overcast sky, crumbling columns and broken "
+     "archways carpeted with moss, cool diffuse light, no glow, high fantasy, photorealistic"),
 
     ("CRYPT",
      "A vast underground crypt with rows of stone sarcophagi carved with warrior reliefs, "
-     "flickering torch sconces on damp walls, cobwebs and scattered bones, high fantasy, "
-     "photorealistic",
-     "Dark underground stone halls with carved arched ceilings, torch sconces, cobwebs and "
-     "damp stone walls, high fantasy, photorealistic"),
+     "cold blue torch sconces on damp walls, cobwebs draping the carved ceilings, scattered "
+     "bones on the stone floor, high fantasy, photorealistic",
+     "Bone-white stone crypt corridors lit by cold blue torchlight, carved archways and "
+     "cobweb-draped columns receding into darkness, no sarcophagi, high fantasy, "
+     "photorealistic"),
 
     ("SHRINE",
-     "A moss-covered outdoor forest shrine with a stone idol surrounded by offerings of "
-     "candles and flowers, shafts of magical dappled light, ancient mystical atmosphere, "
-     "high fantasy, photorealistic",
-     "Magical mossy forest glade with dappled golden light through ancient trees, scattered "
-     "wildflowers and glowing mushrooms, high fantasy, photorealistic"),
+     "A moss-covered outdoor forest shrine at midday, a stone idol surrounded by offerings "
+     "of candles and wildflowers, shafts of warm golden dappled light through the leafy "
+     "canopy above, ancient mystical atmosphere, high fantasy, photorealistic",
+     "Bright green sunlit forest glade with warm golden shafts of light through old oak "
+     "canopy, carpet of ferns and wildflowers, glowing mushrooms, no shrine, high fantasy, "
+     "photorealistic"),
 
     ("ALTAR",
-     "A dark stone altar in an underground ritual chamber, carved with arcane symbols, "
-     "surrounded by burning black candles, ominous light from above, high fantasy, "
-     "photorealistic",
-     "Dark underground ritual chamber with rough stone walls, burning black candles and arcane "
-     "carvings, no altar, high fantasy, photorealistic"),
+     "A dark stone altar in an underground ritual chamber, carved with glowing arcane symbols, "
+     "surrounded by tall burning black candles, ominous violet light from a crack in the "
+     "ceiling above, high fantasy, photorealistic",
+     "Dark underground ritual chamber with rough stone walls, tall black candles and violet "
+     "arcane smoke drifting, carved rune inscriptions, no altar, high fantasy, photorealistic"),
 
     ("FORGE",
-     "Interior of a dwarven forge, a massive furnace blazing with orange fire, sparks flying, "
-     "glowing hot iron on a huge anvil, weapons and tools hung on stone walls, high fantasy, "
-     "photorealistic",
-     "Dwarven stone cavern with rough rock walls, glowing coals and metal tools on stone walls, "
-     "no forge or anvil, high fantasy, photorealistic"),
+     "Interior of a dwarven forge, a massive stone furnace blazing with intense orange fire, "
+     "sparks flying, glowing red-hot iron on a huge anvil, hammers and weapons hung on the "
+     "stone walls, high fantasy, photorealistic",
+     "Deep underground cavern with glowing orange-red lava veins running through dark basalt "
+     "rock walls, heat haze shimmering in the air, no figures or forge, high fantasy, "
+     "photorealistic"),
 
-    # objects — close up ───────────────────────────────────────────────────────
+    # objects — scene level ───────────────────────────────────────────────────
     ("POTION",
-     "Close up of a cluttered alchemist workshop with glowing coloured potions in glass vials "
-     "and flasks, a bubbling cauldron emitting rainbow smoke, dried herbs, an open ancient "
-     "grimoire, candlelight, high fantasy, photorealistic",
-     "Cluttered alchemist workshop shelves with glass bottles, dried herbs and dusty tomes, "
-     "candlelight, no glowing potions, high fantasy, photorealistic"),
+     "A cluttered alchemist's workshop lined with shelves of glowing coloured potions in "
+     "glass vials, a bubbling cauldron emitting rainbow smoke, dried herbs hanging from "
+     "the ceiling, open ancient grimoires on the table, warm amber and violet candlelight, "
+     "high fantasy, photorealistic",
+     "Warm amber alchemist workshop with crowded wooden shelves of dark glass bottles, dried "
+     "herb bundles and dusty tomes, brass instruments on tables, no glowing liquids, high "
+     "fantasy, photorealistic"),
 
     ("CROWN",
-     "Close up of an ancient royal crown wrought from dark twisted gold, set with glowing "
-     "rubies and sapphires, resting on red velvet, dramatic side lighting, high fantasy, "
-     "photorealistic",
-     "Dark stone treasury interior with velvet pedestals and dim candlelight, stone walls with "
-     "carved reliefs, no crown, high fantasy, photorealistic"),
+     "An ancient royal crown of dark twisted gold set with glowing rubies and sapphires "
+     "resting on a crimson velvet cushion atop a stone pedestal in a grand treasure vault, "
+     "ornate walls with golden reliefs, dramatic side lighting from wall sconces, high "
+     "fantasy, photorealistic",
+     "Crimson-draped royal vault interior with carved golden wall reliefs and dim warm sconce "
+     "lighting, stone archways hung with velvet drapes, no crown, high fantasy, "
+     "photorealistic"),
 
     ("GRIMOIRE",
-     "Close up of an open ancient spellbook with yellowed pages covered in glowing arcane "
-     "symbols and diagrams, a quill pen resting on the page, flickering candlelight, high "
-     "fantasy, photorealistic",
-     "Ancient magical library with wooden shelves of dusty tomes and scrolls, candlelight and "
-     "arcane instruments, no open book, high fantasy, photorealistic"),
+     "An open ancient spellbook lying on a reading lectern in a moonlit sorcerer's study, "
+     "yellowed pages glowing with arcane symbols and diagrams, a quill pen resting on the "
+     "page, silver moonlight through tall arched windows, high fantasy, photorealistic",
+     "Silver-blue moonlit sorcerer's library with tall dark wooden shelves of ancient tomes, "
+     "pale blue moonlight through leaded windows, dust motes in the air, no open book, high "
+     "fantasy, photorealistic"),
 
     ("SWORD",
-     "Close up of a legendary enchanted sword with a jewelled crossguard, glowing runes etched "
-     "along the gleaming blade, embedded in a mossy stone, dramatic lighting, high fantasy, "
+     "A legendary enchanted sword with a jewelled crossguard and glowing runes etched along "
+     "the gleaming blade, thrust upright into a mossy stone plinth in a sun-dappled forest "
+     "clearing, rays of golden light breaking through the oak canopy above, high fantasy, "
      "photorealistic",
-     "Ancient mossy stone ruins in a dramatic forest glade, dappled light and ferns, no sword, "
-     "high fantasy, photorealistic"),
+     "Sun-dappled ancient forest clearing with warm golden shafts of light through old oak "
+     "canopy, ferns and mossy rocks, no sword or stone, high fantasy, photorealistic"),
 
-    # persons and creatures — portrait ────────────────────────────────────────
+    # persons and creatures — scene level ─────────────────────────────────────
     ("DRAGON",
-     "Portrait of a colossal dragon with obsidian scales, glowing amber eyes, smoke curling "
-     "from flared nostrils, massive curved horns, dramatic stormy sky behind it, high fantasy, "
+     "A colossal dragon with obsidian scales and glowing amber eyes perched on a shattered "
+     "mountain peak, wings spread wide against a stormy grey sky, smoke curling from its "
+     "nostrils, lightning crackling in the dark storm clouds behind it, high fantasy, "
      "photorealistic",
-     "Dark stormy sky with billowing storm clouds and lightning over rocky mountain peaks, "
-     "high fantasy, photorealistic"),
+     "Cold grey glacier and snow-covered mountain peaks under heavy overcast sky, blue-white "
+     "ice crevasses, no dragon, high fantasy, photorealistic"),
 
     ("WIZARD",
-     "Portrait of an elderly wizard in deep blue robes covered with silver stars, casting a "
-     "glowing spell, ancient books floating around him, magical energy crackling from his staff, "
-     "high fantasy, photorealistic",
-     "Ancient magical study filled with floating books, arcane instruments and glowing orbs, "
-     "no figure, high fantasy, photorealistic"),
+     "An elderly wizard in deep blue star-covered robes standing in a circular arcane "
+     "laboratory, one hand raised casting a glowing golden spell, ancient books floating in "
+     "the air around him, magical energy crackling from his gnarled staff, high fantasy, "
+     "photorealistic",
+     "Emerald green circular arcane laboratory with gleaming brass orreries and spinning "
+     "magical instruments, crackling copper lightning coils, no figure, high fantasy, "
+     "photorealistic"),
 
     ("GOBLIN",
-     "Portrait of a sneaky green-skinned goblin with large pointed ears, crooked yellow teeth, "
-     "wide glinting eyes, clutching a stolen jewel, torchlit cave background, high fantasy, "
+     "A sneaky green-skinned goblin crouching on a pile of stolen treasure in a torchlit "
+     "cave, large pointed ears, crooked yellow teeth gleaming, wide glinting eyes clutching "
+     "a stolen jewel to its chest, scattered gold coins around it, high fantasy, "
      "photorealistic",
-     "Dark torchlit cave interior with rough stone walls and scattered treasures, no goblin, "
-     "high fantasy, photorealistic"),
+     "Deep red-orange torchlit cave interior with rough stone walls and glittering gems "
+     "embedded in the rock, long orange torch shadows, no goblin, high fantasy, "
+     "photorealistic"),
 
     ("KNIGHT",
-     "Portrait of a noble knight in gleaming silver full plate armour, ornate helmet under one "
-     "arm, determined expression, castle courtyard background, high fantasy, photorealistic",
-     "Stone castle courtyard with flagstone floor, stone walls hung with banners, afternoon "
-     "light, no figure, high fantasy, photorealistic"),
+     "A noble knight in gleaming silver full plate armour standing in a sunlit castle "
+     "courtyard, ornate plumed helmet under one arm, determined expression, warm afternoon "
+     "golden light on stone walls hung with colourful heraldic banners, high fantasy, "
+     "photorealistic",
+     "Sunlit stone castle courtyard with warm golden afternoon light, flagstone floor, stone "
+     "walls hung with colourful heraldic banners, no figure, high fantasy, photorealistic"),
 
     ("ELF",
-     "Portrait of a wise elven warrior with pointed ears, silver hair, piercing blue eyes, "
-     "wearing intricate golden leaf armour, ethereal forest background, high fantasy, "
-     "photorealistic",
-     "Ethereal ancient forest with silver-barked trees and magical golden light, no figure, "
-     "high fantasy, photorealistic"),
+     "A wise elven warrior in intricate golden leaf armour standing in an ethereal "
+     "silver-barked forest at dawn, long silver hair, piercing blue eyes, magical golden "
+     "mist rising from the mossy ground around her feet, high fantasy, photorealistic",
+     "Soft pale pink and gold dawn light through delicate silver-barked birch trees, wispy "
+     "pink morning mist drifting between the trunks, no figure, high fantasy, photorealistic"),
 
     ("DWARF",
-     "Portrait of a stout dwarf warrior with a long braided red beard adorned with golden "
-     "rings, a battle axe over one shoulder, runic engraved armour, high fantasy, "
+     "A stout dwarf warrior in rune-engraved bronze armour standing before a great "
+     "underground forge, long braided red beard adorned with gold rings, a heavy battle axe "
+     "resting on his shoulder, intense orange forge-fire glow behind him, high fantasy, "
      "photorealistic",
-     "Vast underground dwarven hall with stone pillars and distant forge fires, no figure, "
+     "Vast cold grey underground dwarven city with colossal carved stone columns disappearing "
+     "into darkness overhead, blue-white phosphorescent moss on ancient walls, no figure, "
      "high fantasy, photorealistic"),
 
     ("WITCH",
-     "Portrait of an old witch with sharp green eyes, long silver hair, a wide-brimmed hat "
-     "decorated with crow feathers and dried herbs, a knowing smile, candlelit room, high "
-     "fantasy, photorealistic",
-     "Candlelit cottage interior with dried herbs hanging from rafters and shelves of jars, "
-     "no figure, high fantasy, photorealistic"),
+     "An old witch in a wide crow-feather hat seated at a candle-strewn table in her forest "
+     "cottage, sharp green eyes over a steaming cauldron, dried herbs hanging from low "
+     "rafters, glass jars lining every shelf, warm amber candlelight, high fantasy, "
+     "photorealistic",
+     "Purple-grey twilight forest glade with gnarled ancient oak trees, wisps of pale green "
+     "witch-fire floating among the dark ferns, no figure, high fantasy, photorealistic"),
 
     ("GOLEM",
-     "Portrait of a massive stone golem with glowing orange eyes, carved arcane runes across "
-     "its rocky face, cracked granite skin, looming and ancient, high fantasy, photorealistic",
-     "Ancient stone chamber with massive carved walls and glowing arcane runes, no golem, "
-     "high fantasy, photorealistic"),
+     "A massive stone golem with glowing orange eyes standing upright in a frost-covered "
+     "ancient stone chamber, arcane runes etched across its cracked granite body, towering "
+     "over crumbled stone blocks on a frozen floor, high fantasy, photorealistic",
+     "Frost-covered ancient stone chamber with faintly glowing rune engravings on the walls "
+     "and ice crystals on the floor, cold blue ambient light, no golem, high fantasy, "
+     "photorealistic"),
 
     ("VALKYRIE",
-     "Portrait of a fierce valkyrie in silver winged armour, long golden hair streaming in the "
-     "wind, a glowing spear raised high, dramatic storm clouds behind her, high fantasy, "
-     "photorealistic",
-     "Dramatic storm clouds with lightning and rays of golden light over mountainous landscape, "
-     "high fantasy, photorealistic"),
+     "A fierce valkyrie in silver winged armour standing on a golden sunset fjord cliff-top, "
+     "long golden hair streaming in the wind, a glowing spear raised to the sky, dramatic "
+     "warm amber light on sheer cliff faces, high fantasy, photorealistic",
+     "Warm golden sunset over a dramatic Scandinavian fjord, sheer cliff faces glowing amber "
+     "and gold, calm copper-coloured water far below, no figure, high fantasy, photorealistic"),
 
     ("SORCERER",
-     "Portrait of a gaunt dark sorcerer in flowing black and purple robes, glowing violet eyes, "
-     "a skull-topped staff, tendrils of dark energy swirling from his hands, high fantasy, "
-     "photorealistic",
-     "Dark stone tower interior with arcane symbols carved on walls, purple energy crackling "
-     "in the air, no figure, high fantasy, photorealistic"),
+     "A gaunt dark sorcerer in black and deep purple robes standing at the top of an obsidian "
+     "tower at twilight, glowing violet eyes, a skull-topped staff crackling with dark energy, "
+     "swirling tendrils of shadow rising from his hands, high fantasy, photorealistic",
+     "Deep purple twilight at the top of an obsidian stone tower, violet arcane energy "
+     "crackling between dark stone spires, no figure, high fantasy, photorealistic"),
 
     ("TROLL",
-     "Portrait of a massive cave troll with jagged uneven teeth, a flat wide nose, small yellow "
-     "eyes, warty grey-green skin, clutching a crude stone club, high fantasy, photorealistic",
-     "Dark rocky cave with jagged stone walls and dim greenish bioluminescent light, no troll, "
-     "high fantasy, photorealistic"),
+     "A massive cave troll crouching in a bioluminescent underground cavern, jagged uneven "
+     "teeth, flat wide nose, small yellow eyes, warty grey-green skin, a crude stone club "
+     "resting against the rock, glowing teal crystal formations around it, high fantasy, "
+     "photorealistic",
+     "Dim greenish bioluminescent underground cavern with glowing teal crystal formations "
+     "growing from dark stone walls, eerie green ambient light, no troll, high fantasy, "
+     "photorealistic"),
 
-    # creatures — close up ────────────────────────────────────────────────────
     ("HYDRA",
-     "Close up of a fearsome hydra with three serpent heads rearing up from dark swamp water, "
-     "dripping scales, forked tongues, glowing red eyes, high fantasy, photorealistic",
-     "Dark murky swamp with gnarled dead trees and fog drifting over still black water, "
-     "high fantasy, photorealistic"),
+     "A fearsome hydra with three serpent heads rearing up from the black water of a "
+     "fog-shrouded swamp at night, dripping dark scales, forked tongues, glowing red eyes "
+     "piercing the murk, gnarled dead trees silhouetted in the fog, high fantasy, "
+     "photorealistic",
+     "Dark fog-shrouded night swamp with gnarled silhouetted dead trees, still black water "
+     "with faint red reflections in the mist, no creature, high fantasy, photorealistic"),
 
     ("PEGASUS",
-     "Close up of a majestic white pegasus rearing up, enormous feathered wings spread wide, "
-     "golden light on its silver mane, dramatic storm clouds, high fantasy, photorealistic",
-     "Dramatic storm clouds with shafts of golden light over mountainous landscape, "
-     "high fantasy, photorealistic"),
+     "A majestic white pegasus in full gallop above a vast pale blue dawn cloudscape, "
+     "enormous feathered wings spread wide, soft golden light on its silver mane, wispy "
+     "white clouds stretching to the horizon far below, high fantasy, photorealistic",
+     "Pale blue pre-dawn sky with a vast white cloudscape, subtle golden glow along the "
+     "cloud horizon, no creature, high fantasy, photorealistic"),
 
     ("PHOENIX",
-     "Close up of a radiant phoenix rising from golden flames, crimson and gold feathers "
-     "blazing, fierce amber eyes, trailing embers against a dark sky, high fantasy, "
-     "photorealistic",
-     "Dark twilight sky with glowing embers and smoke clouds, volcanic rocky landscape below, "
-     "high fantasy, photorealistic"),
+     "A radiant phoenix rising from a pillar of golden fire on a dark volcanic plain at "
+     "night, crimson and gold feathers blazing, fierce amber eyes, glowing embers drifting "
+     "upward, distant orange lava flows in the rocky background, high fantasy, photorealistic",
+     "Dark volcanic plain at night with distant rivers of orange-red lava glowing between "
+     "black basalt rocks, glowing embers drifting in the dark air, no creature, high "
+     "fantasy, photorealistic"),
 
     ("UNICORN",
-     "Close up of a graceful unicorn with a pure white coat, spiraling silver horn glowing "
-     "with magic, flowing silver mane, surrounded by ethereal forest light, high fantasy, "
+     "A graceful unicorn standing in a silver moonlit meadow at the edge of an enchanted "
+     "forest, pure white coat gleaming, spiraling silver horn glowing softly, magical "
+     "fireflies drifting around its hooves, misty silver-barked trees beyond, high fantasy, "
      "photorealistic",
-     "Magical misty forest with silver light filtering through ancient trees, wildflowers and "
-     "glowing moss, high fantasy, photorealistic"),
+     "Silver moonlit meadow at the edge of an enchanted forest, glowing golden fireflies "
+     "drifting in the moonlight, misty silver-barked trees in the distance, no creature, "
+     "high fantasy, photorealistic"),
 ]
 
 WORDS_TO_WIN    = 10
@@ -549,6 +583,10 @@ def main() -> None:
     # ── OVIE navigation worker ─────────────────────────────────────────────────
     def move(initial_key: int) -> None:
         nonlocal total_yaw, total_pitch, cam_z
+        # Release PyTorch's cached GPU allocations so cuBLAS can create its
+        # per-thread handle without hitting an out-of-memory error on the first
+        # OVIE call (which may be the first cuBLAS op in this thread).
+        torch.cuda.empty_cache()
         key = initial_key
         turn_deg = np.degrees(CAMERA_TURN_ANGLE)
         while True:

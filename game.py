@@ -600,8 +600,16 @@ def main() -> None:
         # per-thread handle without hitting an out-of-memory error on the first
         # OVIE call (which may be the first cuBLAS op in this thread).
         torch.cuda.empty_cache()
-        key = initial_key
-        turn_deg = np.degrees(CAMERA_TURN_ANGLE)
+
+        BASE_DEG  = np.degrees(CAMERA_TURN_ANGLE)  # 1° base step
+        MAX_DEG   = BASE_DEG * 4                    # 4° top speed
+        ACCEL_DEG = BASE_DEG * 0.5                  # acceleration per held frame
+        DRAG      = 0.60                             # coast velocity multiplier
+
+        key       = initial_key
+        turn_deg  = BASE_DEG   # current yaw step (grows while held, decays on coast)
+        coast_vel = BASE_DEG   # speed to carry into coast on key release
+
         while True:
             new_yaw   = total_yaw
             new_pitch = total_pitch
@@ -643,6 +651,23 @@ def main() -> None:
                 cam_z       = new_z
 
             next_key = held_key[0]
+
+            # Yaw momentum: accelerate while held, coast after release
+            if key in (pygame.K_LEFT, pygame.K_RIGHT):
+                if next_key == key:
+                    turn_deg  = min(turn_deg + ACCEL_DEG, MAX_DEG)
+                    coast_vel = turn_deg
+                elif next_key is None:
+                    coast_vel *= DRAG
+                    if coast_vel < BASE_DEG * 0.3:
+                        break
+                    turn_deg = coast_vel
+                    continue  # keep key unchanged — coast in same direction
+                else:
+                    # Different key pressed: reset yaw momentum and hand off
+                    turn_deg  = BASE_DEG
+                    coast_vel = BASE_DEG
+
             if next_key is None:
                 break
             key = next_key
